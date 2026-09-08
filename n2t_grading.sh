@@ -27,7 +27,7 @@ done
 # Determine the correct runner based on project number
 case "$PROJ_NUM" in
     01|02|03|05)
-        RUNNER="HardwareSimulator.sh"
+        RUNNER="/c/Users/flapp/OneDrive/Documents/nand2tetris/nand2tetris/tools/HardwareSimulator.bat"
         ;;
     07|08)
         RUNNER="VMEmulator.sh"

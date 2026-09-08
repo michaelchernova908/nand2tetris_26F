@@ -41,5 +41,40 @@ CHIP ALU {
         ng;      // if (out < 0)  equals 1, else 0
 
     PARTS:
-    //// Replace this comment with your code.
+    // Zero x if zx = 1
+    Mux16(a=x, b[0..15]=false, sel=zx, out=xZero);
+
+    // Negate x if nx = 1
+    Not16(in=xZero, out=xNot);
+    Mux16(a=xZero, b=xNot, sel=nx, out=xFinal);
+
+    // Zero y if zy = 1
+    Mux16(a=y, b[0..15]=false, sel=zy, out=yZero);
+    
+    // Negate y if ny = 1
+    Not16(in=yZero, out=yNot);
+    Mux16(a=yZero, b=yNot, sel=ny, out=yFinal);
+ 
+    // AND if f = 0
+    // ADD if f = 1
+    And16(a=xFinal, b=yFinal, out=andResult);
+    Add16(a=xFinal, b=yFinal, out=addResult);
+    Mux16(a=andResult, b=addResult, sel=f, out=outPre);
+
+    // Negate output if no = 1
+    
+    Not16(in=outPre, out=outNot);
+    // Creating inputs for following commands beacsue this can't be done within the input argument
+    Mux16(a=outPre, b=outNot, sel=no, out=out, out[0..7]=inone, out[8..15]=intwo, out[15]=inthree);
+   
+    // zr = 0 if out = 0
+    Or8Way(in=inone, out=lowNonZero);
+    Or8Way(in=intwo, out=highNonZero);
+    Or(a=lowNonZero, b=highNonZero, out=anyNonZero);
+    Not(in=anyNonZero, out=zr);
+    
+    // ng = 1 if out < 0
+    Or(a=inthree, b=false, out=ng);
+
+    
 }
