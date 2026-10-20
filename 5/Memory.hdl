@@ -25,5 +25,124 @@ CHIP Memory {
     OUT out[16];
 
     PARTS:
-	//// Replace this comment with your code.
+	 // Determine which memory device to use
+    
+
+    // RAM16K uses addresses 0x0000 - 0x3FFF.
+    // These addresses all have address[14] = 0.
+    Not(in=address[14], out=ramSelect);
+
+    // Screen uses addresses 0x4000 - 0x5FFF.
+    // These addresses have:
+    // address[14] = 1
+    // address[13] = 0
+    Not(in=address[13], out=notAddress13);
+    And(a=address[14], b=notAddress13, out=screenSelect);
+
+    // Keyboard is at address 0x6000.
+    // 0x6000 = 110000000000000
+    //
+    // Therefore address[14] and address[13] must be 1,
+    // while every other address bit must be 0.
+
+    And(a=address[14], b=address[13], out=keyboardHigh);
+
+    Not(in=address[12], out=notA12);
+    Not(in=address[11], out=notA11);
+    Not(in=address[10], out=notA10);
+    Not(in=address[9], out=notA9);
+    Not(in=address[8], out=notA8);
+    Not(in=address[7], out=notA7);
+    Not(in=address[6], out=notA6);
+    Not(in=address[5], out=notA5);
+    Not(in=address[4], out=notA4);
+    Not(in=address[3], out=notA3);
+    Not(in=address[2], out=notA2);
+    Not(in=address[1], out=notA1);
+    Not(in=address[0], out=notA0);
+
+    // Combine the zero bits to determine whether
+    // the address is exactly 0x6000.
+
+    And(a=notA12, b=notA11, out=k1);
+    And(a=notA10, b=notA9, out=k2);
+    And(a=notA8, b=notA7, out=k3);
+    And(a=notA6, b=notA5, out=k4);
+    And(a=notA4, b=notA3, out=k5);
+    And(a=notA2, b=notA1, out=k6);
+
+    And(a=k1, b=k2, out=k7);
+    And(a=k3, b=k4, out=k8);
+    And(a=k5, b=k6, out=k9);
+
+    And(a=k7, b=k8, out=k10);
+    And(a=k9, b=notA0, out=k11);
+
+    And(a=k10, b=k11, out=keyboardLow);
+
+    And(a=keyboardHigh, b=keyboardLow, out=keyboardSelect);
+
+
+    // -----------------------------------
+    // Generate the load signals
+    // -----------------------------------
+
+    // RAM gets load only when RAM is selected.
+    And(a=load, b=ramSelect, out=ramLoad);
+
+    // Screen gets load only when Screen is selected.
+    And(a=load, b=screenSelect, out=screenLoad);
+
+    // Keyboard is read-only, so we don't need a keyboard load signal.
+
+
+    // -----------------------------------
+    // Connect the memory chips
+    // -----------------------------------
+
+    RAM16K(
+        in=in,
+        load=ramLoad,
+        address=address[0..13],
+        out=ramOut
+    );
+
+    Screen(
+        in=in,
+        load=screenLoad,
+        address=address[0..12],
+        out=screenOut
+    );
+
+    Keyboard(
+        out=keyboardOut
+    );
+
+
+    // -----------------------------------
+    // Select the correct output
+    // -----------------------------------
+
+    // First choose between RAM and Screen.
+    // screenSelect = 0 -> RAM
+    // screenSelect = 1 -> Screen
+
+    Mux16(
+        a=ramOut,
+        b=screenOut,
+        sel=screenSelect,
+        out=ramOrScreen
+    );
+
+    // Then choose between RAM/Screen and Keyboard.
+    // keyboardSelect = 0 -> RAM/Screen
+    // keyboardSelect = 1 -> Keyboard
+
+    Mux16(
+        a=ramOrScreen,
+        b=keyboardOut,
+        sel=keyboardSelect,
+        out=out
+    );
+}
 }
