@@ -33,4 +33,380 @@ CHIP CPU {
 
     PARTS:
 	//// Replace this comment with your code.
+	// =============================================================
+    // HACK INSTRUCTION BITS
+    // =============================================================
+    //
+    // [15]    Instruction type: 0 = A-instruction, 1 = C-instruction
+    // [14]    Always 1 for C-instruction
+    // [13]    Always 1 for C-instruction
+    // [12]    ALU a-bit: 0 = A, 1 = M
+    // [11]    ALU zx
+    // [10]    ALU nx
+    // [9]     ALU zy
+    // [8]     ALU ny
+    // [7]     ALU f
+    // [6]     ALU no
+    // [5]     Destination A
+    // [4]     Destination D
+    // [3]     Destination M
+    // [2]     Jump if negative
+    // [1]     Jump if zero
+    // [0]     Jump if positive
+    //
+    // C-instruction format:
+    // 111 a c1 c2 c3 c4 c5 c6 d1 d2 d3 j1 j2 j3
+    // =============================================================
+
+    // =========================================================
+    // 1. DETERMINE A-INSTRUCTION VS. C-INSTRUCTION
+    // =========================================================
+    //
+    // instruction[15] tells us which type of instruction this is:
+    //
+    // 0 -> A-instruction
+    // 1 -> C-instruction
+
+    Not(
+        in=instruction[15],
+        out=isAInstruction
+    );
+
+
+    // =========================================================
+    // 2. SELECT THE ALU'S Y INPUT
+    // =========================================================
+    //
+    // The ALU's Y input can be either:
+    //
+    // instruction[12] = 0 -> A register
+    // instruction[12] = 1 -> M (the value from Memory[A])
+    //
+    // The value of M comes into the CPU through the inM input.
+
+    Mux16(
+        a=aRegisterCurrentValue,
+        b=inM,
+        sel=instruction[12],
+        out=aluYInput
+    );
+
+
+    // =========================================================
+    // 3. ALU
+    // =========================================================
+    //
+    // The ALU receives:
+    //
+    // X = current value in D
+    // Y = either A or M
+    //
+    // The six control bits tell the ALU what calculation to perform.
+
+    ALU(
+        x=dRegisterCurrentValue,
+        y=aluYInput,
+
+        zx=instruction[11],
+        nx=instruction[10],
+        zy=instruction[9],
+        ny=instruction[8],
+        f=instruction[7],
+        no=instruction[6],
+
+        out=aluResult,
+        zr=aluResultIsZero,
+        ng=aluResultIsNegative
+    );
+
+
+    // =========================================================
+    // 4. DETERMINE WHEN THE A REGISTER SHOULD LOAD
+    // =========================================================
+    //
+    // The A register loads in two situations:
+    //
+    // 1. This is an A-instruction
+    // 2. This is a C-instruction whose destination includes A
+    //
+    // instruction[5] is the A destination bit.
+
+    And(
+        a=instruction[15],
+        b=instruction[5],
+        out=cInstructionWantsToLoadA
+    );
+
+    Or(
+        a=isAInstruction,
+        b=cInstructionWantsToLoadA,
+        out=shouldLoadARegister
+    );
+
+
+    // =========================================================
+    // 5. SELECT WHAT GETS LOADED INTO THE A REGISTER
+    // =========================================================
+    //
+    // For an A-instruction:
+    //
+    //     A <- instruction
+    //
+    // For a C-instruction with dest=A (ex. A=D):
+    //
+    //     A <- ALU result
+
+    Mux16(
+        a=instruction,
+        b=aluResult,
+        sel=instruction[15],
+        out=valueToLoadIntoARegister
+    );
+
+    ARegister(
+        in=valueToLoadIntoARegister,
+        load=shouldLoadARegister,
+        out=aRegisterCurrentValue
+    );
+
+
+    // =========================================================
+    // 6. DETERMINE WHEN THE D REGISTER SHOULD LOAD
+    // =========================================================
+    //
+    // The D register only loads during a C-instruction.
+    //
+    // instruction[4] is the D destination bit.
+
+    And(
+        a=instruction[15],
+        b=instruction[4],
+        out=shouldLoadDRegister
+    );
+
+    DRegister(
+        in=aluResult,
+        load=shouldLoadDRegister,
+        out=dRegisterCurrentValue
+    );
+
+
+    // =========================================================
+    // 7. OUTPUT THE ALU RESULT TO MEMORY
+    // =========================================================
+    //
+    // outM is always the ALU result.
+    //
+    // The separate writeM signal determines whether Memory
+    // actually stores this value.
+
+    Or16(
+        a=aluResult,
+        b=false,
+        out=outM
+    );
+
+
+    // =========================================================
+    // 8. DETERMINE WHETHER TO WRITE TO MEMORY
+    // =========================================================
+    //
+    // Memory should be written only when:
+    //
+    // 1. This is a C-instruction
+    // 2. The M destination bit is 1
+    //
+    // instruction[3] is the M destination bit.
+
+    And(
+        a=instruction[15],
+        b=instruction[3],
+        out=shouldWriteToMemory
+    );
+
+    Or(
+        a=shouldWriteToMemory,
+        b=false,
+        out=writeM
+    );
+
+
+    // =========================================================
+    // 9. DETERMINE THE MEMORY ADDRESS
+    // =========================================================
+    //
+    // Memory[A] means the address comes from the A register.
+    //
+    // The A register is 16 bits, while addressM is 15 bits,
+    // so we output bits 0 through 14.
+
+    Or16(
+        a=aRegisterCurrentValue,
+        b=false,
+        out[0..14]=addressM
+    );
+
+
+    // =========================================================
+    // 10. DETERMINE WHETHER THE ALU RESULT IS POSITIVE
+    // =========================================================
+    //
+    // The ALU directly tells us whether the result is:
+    //
+    // zero     -> aluResultIsZero = 1
+    // negative -> aluResultIsNegative = 1
+    //
+    // If it is neither zero nor negative, it must be positive.
+
+    Not(
+        in=aluResultIsZero,
+        out=aluResultIsNotZero
+    );
+
+    Not(
+        in=aluResultIsNegative,
+        out=aluResultIsNotNegative
+    );
+
+    And(
+        a=aluResultIsNotZero,
+        b=aluResultIsNotNegative,
+        out=aluResultIsPositive
+    );
+
+
+    // =========================================================
+    // 11. DETERMINE WHETHER THE JUMP CONDITION IS SATISFIED
+    // =========================================================
+    //
+    // The three jump bits are:
+    //
+    // instruction[2] -> jump if negative
+    // instruction[1] -> jump if zero
+    // instruction[0] -> jump if positive
+    //
+    // A jump condition is satisfied when the instruction
+    // requests that condition AND the ALU result has that condition.
+
+    And(
+        a=instruction[2],
+        b=aluResultIsNegative,
+        out=jumpBecauseResultIsNegative
+    );
+
+    And(
+        a=instruction[1],
+        b=aluResultIsZero,
+        out=jumpBecauseResultIsZero
+    );
+
+    And(
+        a=instruction[0],
+        b=aluResultIsPositive,
+        out=jumpBecauseResultIsPositive
+    );
+
+
+    // A jump occurs if ANY of the requested conditions are true.
+
+    Or(
+        a=jumpBecauseResultIsNegative,
+        b=jumpBecauseResultIsZero,
+        out=jumpBecauseNegativeOrZero
+    );
+
+    Or(
+        a=jumpBecauseNegativeOrZero,
+        b=jumpBecauseResultIsPositive,
+        out=jumpConditionIsSatisfied
+    );
+
+
+    // =========================================================
+    // 12. MAKE SURE ONLY C-INSTRUCTIONS CAN JUMP
+    // =========================================================
+    //
+    // A-instructions do not contain jump commands.
+    //
+    // Therefore, we require:
+    //
+    // C-instruction AND jump condition satisfied
+
+    And(
+        a=instruction[15],
+        b=jumpConditionIsSatisfied,
+        out=shouldJumpToA
+    );
+
+
+    // =========================================================
+    // 13. CALCULATE THE NORMAL NEXT PC
+    // =========================================================
+    //
+    // If there is no jump, the next instruction is simply:
+    //
+    //     PC + 1
+
+    Inc16(
+        in=currentProgramCounter,
+        out=programCounterPlusOne
+    );
+
+
+    // =========================================================
+    // 14. SELECT THE NEXT PROGRAM COUNTER VALUE
+    // =========================================================
+    //
+    // If there is no jump:
+    //
+    //     next PC = PC + 1
+    //
+    // If there is a jump:
+    //
+    //     next PC = A
+    //
+    // shouldJumpToA controls the Mux.
+
+    Mux16(
+        a=programCounterPlusOne,
+        b=aRegisterCurrentValue,
+        sel=shouldJumpToA,
+        out=nextProgramCounterValue
+    );
+
+
+    // =========================================================
+    // 15. PROGRAM COUNTER
+    // =========================================================
+    //
+    // The PC stores the address of the next instruction.
+    //
+    // We load the selected next PC every cycle.
+    //
+    // reset=1 overrides this and resets the PC to 0.
+
+    PC(
+        in=nextProgramCounterValue,
+        load=true,
+        inc=false,
+        reset=reset,
+        out=currentProgramCounter
+    );
+
+
+    // =========================================================
+    // 16. OUTPUT THE PROGRAM COUNTER
+    // =========================================================
+    //
+    // The internal PC is 16 bits.
+    // The CPU's pc output is 15 bits.
+    //
+    // Therefore, output bits 0 through 14.
+
+    Or16(
+        a=currentProgramCounter,
+        b=false,
+        out[0..14]=pc
+    );
+
 }
