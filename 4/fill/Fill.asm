@@ -94,9 +94,11 @@ M=D                 // RAM[0] = 16384
     // Start again at the beginning of the screen.
 
     // Otherwise, stay at the end
+    // Reset R0 to the address immediately after the screen
+    @KBD
+    D=A
     @R0
-    M=M-1              // De-increment R0 to keep Keep it at 24575
-                       // Keep Pointer at end of the screen
+    M=D                            
 
     @LOOP
     0;JMP              // Unconditionally jump back to main loop
