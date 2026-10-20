@@ -18,5 +18,64 @@ CHIP Computer {
     IN reset;
 
     PARTS:
-    //// Replace this comment with your code.
+    // 1. ROM32K
+
+    // The PC tells ROM which instruction to retrieve.
+    //
+    // PC = address of the current instruction
+    // ROM output = instruction that the CPU should execute
+
+    ROM32K(
+        address=pc,
+        out=instruction
+    );
+
+
+    // 2. CPU
+
+    // The CPU receives:
+    //
+    // instruction = instruction from ROM
+    // inM         = data currently being read from Memory
+    // reset       = reset signal
+    //
+    // The CPU produces:
+    //
+    // outM        = data it wants to write to Memory
+    // writeM      = whether Memory should actually write
+    // addressM    = address in Memory to access
+    // pc          = address of the next instruction
+
+    CPU(
+        inM=inM,
+        instruction=instruction,
+        reset=reset,
+
+        outM=outM,
+        writeM=writeM,
+        addressM=addressM,
+        pc=pc
+    );
+
+
+    // =========================================================
+    // 3. MEMORY
+    // =========================================================
+    // The CPU and Memory communicate in both directions.
+    //
+    // CPU -> Memory:
+    // outM     = value to write
+    // writeM   = whether to write
+    // addressM = where to write/read
+    //
+    // Memory -> CPU:
+    // inM      = value currently stored at addressM
+
+    Memory(
+        in=outM,
+        load=writeM,
+        address=addressM,
+        
+        out=inM,
+    );
 }
