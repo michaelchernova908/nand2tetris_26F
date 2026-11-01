@@ -398,13 +398,7 @@ def translate_file(input_filename, output_filename):
                 outfile.write(assembly + "\n")
 
 def main():
-    """
-    input_filename = r"C:\Users\flapp\Testchocho\nand2tetris_26F\7\MemoryAccess\StaticTest\StaticTest.vm"
-    output_filename = "StaticTest.asm"
-
     
-    translate_file(input_filename, output_filename)
-    """
 
     input_path = Path(sys.argv[1])
 
