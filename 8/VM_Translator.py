@@ -706,35 +706,6 @@ def main():
         print(f"Translation complete: {output_filename}")
 
 
-    """
-        input_path = Path(sys.argv[1])
-    
-        if not input_path.exists():
-            print(f"Error: {input_path} does not exist.")
-            sys.exit(1)
-    
-        if input_path.is_file():
-            if input_path.suffix.lower() != ".vm":
-                print("Error: Input file must have a .vm extension.")
-                sys.exit(1)
-    
-            output_path = input_path.with_suffix(".asm")
-            translate_file(str(input_path), str(output_path))
-    
-        elif input_path.is_dir():
-            vm_files = list(input_path.glob("*.vm"))
-    
-            if not vm_files:
-                print("Error: No .vm files found in directory.")
-                sys.exit(1)
-    
-            
-            for vm_file in vm_files:
-                output_path = vm_file.with_suffix(".asm")
-                translate_file(str(vm_file), str(output_path))
-          """   
-
-
 if __name__ == "__main__":
     main()
 
