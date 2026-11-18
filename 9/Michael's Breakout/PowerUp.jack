@@ -1,0 +1,100 @@
+/**
+ * Represents a falling power-up capsule spawned from a destroyed brick.
+ * Draws different geometric shapes based on its type (1=Square, 2=Triangle, 3=Plus).
+ */
+class PowerUp {
+    field int x, y;         // Top-left position
+    field int size;         // Width and height (10x10 works well)
+    field int type;         // 1 = Shrink Paddle, 2 = Multi-Ball, 3 = Extra Life
+    field boolean active;   // True while falling on screen
+
+    constructor PowerUp new() {
+        let size = 10;
+        let active = false;
+        return this;
+    }
+
+    method void dispose() {
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    /** Spawns the power-up at (startX, startY) with a given shape type. */
+    method void spawn(int startX, int startY, int pType) {
+        if (active) { return; } // Only one falling capsule at a time
+        let x = startX;
+        let y = startY;
+        let type = pType;
+        let active = true;
+        do draw();
+        return;
+    }
+
+    /** Deactivates and erases the capsule (when caught or missed at bottom). */
+    method void deactivate() {
+        if (active) {
+            do erase();
+            let active = false;
+        }
+        return;
+    }
+
+    /** Moves the capsule downward by 2 pixels per frame. */
+    method void move() {
+        if (~active) { return; }
+        do erase();
+        let y = y + 2;
+
+        // Deactivate if it falls past the bottom of the screen
+        if ((y + size) > 250) {
+            let active = false;
+            return;
+        }
+
+        do draw();
+        return;
+    }
+
+    /** Draws the shape corresponding to `type`. */
+    method void draw() {
+        var int midX, midY;
+        let midX = x + (size / 2);
+        let midY = y + (size / 2);
+
+        do Screen.setColor(true);
+
+        if (type = 1) {
+            // Hollow Square (Shrink / enlarge Paddle)
+            do Screen.drawRectangle(x, y, x + size, y + size);
+            do Screen.setColor(false);
+            do Screen.drawRectangle(x + 2, y + 2, (x + size) - 2, (y + size) - 2);
+        }
+
+        if (type = 2) {
+            // Triangle (Multi-Ball)
+            do Screen.drawLine(midX, y, x, y + size);
+            do Screen.drawLine(midX, y, x + size, y + size);
+            do Screen.drawLine(x, y + size, x + size, y + size);
+        }
+
+        if (type = 3) {
+            // Plus / Cross (Extra Life)
+            do Screen.drawRectangle(midX - 1, y, midX + 1, y + size);
+            do Screen.drawRectangle(x, midY - 1, x + size, midY + 1);
+        }
+        return;
+    }
+
+    /** Erases the capsule's bounding box. */
+    method void erase() {
+        do Screen.setColor(false);
+        do Screen.drawRectangle(x, y, x + size, y + size);
+        return;
+    }
+
+    method boolean isActive() { return active; }
+    method int getX() { return x; }
+    method int getY() { return y; }
+    method int getSize() { return size; }
+    method int getType() { return type; }
+}

@@ -1,0 +1,113 @@
+/**
+ * Represents the player-controlled paddle in Breakout.
+ * Uses top-left (x, y) coordinates and incremental slice rendering
+ * to prevent screen flicker during rapid horizontal movement.
+ */
+class Paddle {
+    field int x, y;           // Top-left position
+    field int width, height;  // Dimensions in pixels
+    field int speed;          // Horizontal pixels moved per step
+
+    /** Constructs a new Paddle at (startX, startY) with given dimensions and speed. */
+    constructor Paddle new(int startX, int startY, int pWidth, int pHeight, int pSpeed) {
+        let x = startX;
+        let y = startY;
+        let width = pWidth;
+        let height = pHeight;
+        let speed = pSpeed;
+        do draw();
+        return this;
+    }
+
+    /** Deallocates the Paddle object from memory. */
+    method void dispose() {
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    /** Draws the full paddle on the screen. */
+    method void draw() {
+        do Screen.setColor(true);
+        do Screen.drawRectangle(x, y, x + width, y + height);
+        return;
+    }
+
+    /** Erases the full paddle from the screen. */
+    method void erase() {
+        do Screen.setColor(false);
+        do Screen.drawRectangle(x, y, x + width, y + height);
+        return;
+    }
+
+    /** Moves the paddle left, clamping at the left screen edge (x = 1). */
+    method void moveLeft() {
+        var int step;
+        if (x > 1) {
+            let step = speed;
+            // Clamp step so we don't go past x = 1
+            if ((x - step) < 1) {
+                let step = x - 1;
+            }
+
+            // Erase only the right-hand slice left behind
+            do Screen.setColor(false);
+            do Screen.drawRectangle((x + width) - step + 1, y, x + width, y + height);
+
+            let x = x - step;
+
+            // Draw only the new left-hand slice
+            do Screen.setColor(true);
+            do Screen.drawRectangle(x, y, x + step - 1, y + height);
+        }
+        return;
+    }
+
+    /** Moves the paddle right, clamping at the right screen edge (x = 510). */
+    method void moveRight() {
+        var int step;
+        if ((x + width) < 510) {
+            let step = speed;
+            // Clamp step so (x + width) doesn't exceed 510
+            if ((x + width + step) > 510) {
+                let step = 510 - (x + width);
+            }
+
+            // Erase only the left-hand slice left behind
+            do Screen.setColor(false);
+            do Screen.drawRectangle(x, y, x + step - 1, y + height);
+
+            let x = x + step;
+
+            // Draw only the new right-hand slice
+            do Screen.setColor(true);
+            do Screen.drawRectangle((x + width) - step + 1, y, x + width, y + height);
+        }
+        return;
+    }
+
+    /** Repositions the paddle (useful when resetting after losing a life). */
+    method void reset(int startX) {
+        do erase();
+        let x = startX;
+        do draw();
+        return;
+    }
+
+    /** Changes the paddle width (used by shrink/expand power-ups). */
+    method void setWidth(int newWidth) {
+        do erase();
+        let width = newWidth;
+        // Clamp x if the wider paddle would cross the right edge
+        if ((x + width) > 510) {
+            let x = 510 - width;
+        }
+        do draw();
+        return;
+    }
+
+    /** Getters for collision detection in Game.jack */
+    method int getX() { return x; }
+    method int getY() { return y; }
+    method int getWidth() { return width; }
+    method int getHeight() { return height; }
+}

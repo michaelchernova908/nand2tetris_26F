@@ -1,0 +1,387 @@
+/**
+ * Game.jack
+ * ---------
+ * The central controller for Breakout. It owns all game objects (paddle, balls,
+ * brick grid, and power-up capsule), runs the main frame-by-frame loop, detects
+ * collisions, updates the HUD (score & lives), and frees memory on exit.
+ */
+class Game {
+    //Game Entities
+    field Paddle paddle;            
+    field Ball ball1, ball2;        // Two ball objects (ball2 is used for Multi-Ball)
+    field boolean ball1Active;      // True while ball1 is in play on screen
+    field boolean ball2Active;      // True while ball2 is in play on screen
+    field PowerUp powerUp;          // Single reusable falling power-up capsule
+    field int nextPowerType;        // Cycles 1 to 2 to 3 to determine next capsule shape
+
+    // Brick Wall 
+    field Array bricks;             // 1D array of booleans (true = intact, false = broken)
+    field int rows, cols;           // Grid dimensions 
+    field int brickW, brickH;       // Total cell size in pixels
+    field int brickGap;             // Empty pixel margin between neighboring bricks
+    field int wallTop, wallLeft;    // Top-left pixel origin where the brick wall starts
+    field int remainingBricks;      // Counter that triggers the "you win" when it hits 0
+
+    //Player Stats & Loop Control 
+    field int score;                // Current points earned (+10 per brick)
+    field int lives;                // Remaining lives before Game Over
+    field boolean exit;             // Set to true to break out of the main game loop
+
+    /**
+     * Constructor: Sets up initial coordinates, allocates all objects on the heap,
+     * draws the starting brick wall, and prints the initial Score/Lives
+     */
+    constructor Game new() {
+        // Configure a 4x8 brick wall centered horizontally on the 512x256 screen:
+        // 8 columns * 60px = 480px wide -> (512 - 480) / 2 = 16px left margin
+        let rows = 4;
+        let cols = 8;
+        let brickW = 60;
+        let brickH = 14;
+        let brickGap = 4;
+        let wallTop = 24;           
+        let wallLeft = 16;
+
+        // Initialize player stats and state flags
+        let score = 0;
+        let lives = 3;
+        let exit = false;
+        let nextPowerType = 1;      // First capsule spawned will be Type 1 (Square)
+
+        // Create the paddle (x=226 centers a 60px paddle) and the two balls
+        let paddle = Paddle.new(226, 240, 60, 6, 4);
+        let ball1 = Ball.new(253, 220, 6);
+        let ball2 = Ball.new(253, 220, 6);
+        do ball2.erase();           // Hide ball2 immediately. Won't be used till multi-ball
+        let ball1Active = true;
+        let ball2Active = false;
+
+        
+        let powerUp = PowerUp.new();
+
+        // Build the brick array and draw the initial screen state
+        do initBricks();
+        do drawHUD();
+        return this;
+    }
+
+    /*
+     Memory Cleanup
+     */
+    method void dispose() {
+        do paddle.dispose();
+        do ball1.dispose();
+        do ball2.dispose();
+        do powerUp.dispose();
+        do bricks.dispose();        
+        do Memory.deAlloc(this);   
+        return;
+    }
+
+    /**
+     * Allocates the 1D brick array, marks every brick as intact (true),
+     * and draws the entire wall
+     */
+    method void initBricks() {
+        var int r, c, index;
+        let remainingBricks = rows * cols;
+        let bricks = Array.new(remainingBricks);
+
+        let r = 0;
+        while (r < rows) {
+            let c = 0;
+            while (c < cols) {
+                let index = (r * cols) + c;
+                let bricks[index] = true;
+                do drawBrick(r, c, true);
+                let c = c + 1;
+            }
+            let r = r + 1;
+        }
+        return;
+    }
+
+    /**
+     * Draws (color = true) or erases (color = false) the brick at (r, c).
+     
+     */
+    method void drawBrick(int r, int c, boolean color) {
+        var int x1, y1, x2, y2;
+        let x1 = wallLeft + (c * brickW);
+        let y1 = wallTop + (r * brickH);
+        let x2 = (x1 + brickW) - brickGap;
+        let y2 = (y1 + brickH) - brickGap;
+
+        do Screen.setColor(color);
+        do Screen.drawRectangle(x1, y1, x2, y2);
+        return;
+    }
+
+    /**
+     * Prints Score (top-left) and Lives (top-right) on row 0 of the text grid..
+     */
+    method void drawHUD() {
+        do Output.moveCursor(0, 0);
+        do Output.printString("Score: ");
+        do Output.printInt(score);
+        do Output.moveCursor(0, 52);
+        do Output.printString("Lives: ");
+        do Output.printInt(lives);
+        return;
+    }
+
+    /**
+     * Main Game Loop: Runs continuously until `exit` becomes true (Win, Game Over, or ESC).
+     * Each iteration represents one frame of animation.
+     */
+    method void run() {
+        var char key;
+
+        while (~exit) {
+            // 1. keyboard for player input
+            let key = Keyboard.keyPressed();
+            if (key = 140) { let exit = true; }         // 140 = ESC key
+            if (key = 130) { do paddle.moveLeft(); }    // 130 = Left arrow
+            if (key = 132) { do paddle.moveRight(); }   // 132 = Right arrow
+
+            // 2. Update ball 1 position and check its collisions
+            if (ball1Active) {
+                do ball1.move();
+                do checkPaddleCollision(ball1);
+                do checkBrickCollision(ball1);
+            }
+
+            // 3. Update ball 2 position and collisions (only when Multi-Ball is active)
+            if (ball2Active) {
+                do ball2.move();
+                do checkPaddleCollision(ball2);
+                do checkBrickCollision(ball2);
+            }
+
+            // 4. Update falling power-up capsule and check if the paddle caught it
+            if (powerUp.isActive()) {
+                do powerUp.move();
+                do checkPowerUpCollision();
+            }
+
+            // 5. Check if any balls dropped below the screen or if all bricks are cleared
+            do checkBottomAndWin();
+
+            // 6. Pause briefly (10ms) to keep game speed playable
+            do Sys.wait(10);
+        }
+        return;
+    }
+
+    /**
+     * Checks if ball  overlaps the paddle. If so, bounces it upward and adjusts
+     * horizontal direction (`dx`) based on which third of the paddle was hit.
+     */
+    method void checkPaddleCollision(Ball b) {
+        var int bx, by, bSize;
+        var int px, py, pw, ph;
+        var int hitOffset;
+
+        //Ignore balls already moving upward (dy < 0) so they don't get trapped
+        if (b.getDy() < 0) { return; }
+
+        let bx = b.getX();
+        let by = b.getY();
+        let bSize = b.getSize();
+        let px = paddle.getX();
+        let py = paddle.getY();
+        let pw = paddle.getWidth();
+        let ph = paddle.getHeight();
+
+        // Check bounding-box overlap between ball and paddle
+        if (intersects(bx, by, bSize, bSize, px, py, pw, ph)) {
+            do b.bounceY();
+
+            // Calculate where the ball's center hit relative to the paddle's left edge
+            let hitOffset = (bx + (bSize / 2)) - px;
+
+            if (hitOffset < (pw / 3)) {
+                do b.setDx(-2);             // Hit left third -> angle bounce to the left
+            } else {
+                if (hitOffset > ((pw * 2) / 3)) {
+                    do b.setDx(2);          // Hit right third -> angle bounce to the right
+                }
+                // Middle third preserves the ball's existing horizontal angle
+            }
+        }
+        return;
+    }
+
+    /**
+     * O(1) Brick Collision: Instead of looping over all 32 bricks, converts
+     * the ball's center (x, y) pixel directly into a grid (row, col) index.
+     */
+    method void checkBrickCollision(Ball b) {
+        var int bx, by, bSize;
+        var int r, c, index;
+        var int spawnX, spawnY;
+
+        let bx = b.getX();
+        let by = b.getY();
+        let bSize = b.getSize();
+
+        // Exit immediately if the ball is outside the brick wall's bounds
+        if ((by > (wallTop + (rows * brickH) - 1)) | ((by + bSize) < wallTop)) {
+            return;
+        }
+        if ((bx > (wallLeft + (cols * brickW) - 1)) | ((bx + bSize) < wallLeft)) {
+            return;
+        }
+
+        // Map the ball's center pixel to a row (0..3) and column (0..7)
+        let r = ((by + (bSize / 2)) - wallTop) / brickH;
+        let c = ((bx + (bSize / 2)) - wallLeft) / brickW;
+
+        // Make sure indices are safely inside the array bounds
+        if ((r > -1) & (r < rows) & (c > -1) & (c < cols)) {
+            let index = (r * cols) + c;
+
+            // If that brick is still intact, destroy it
+            if (bricks[index]) {
+                let bricks[index] = false;
+                do drawBrick(r, c, false);  // Erase brick from screen
+                do b.bounceY();             // Reverse ball's vertical direction
+
+                let remainingBricks = remainingBricks - 1;
+                let score = score + 10;
+                do drawHUD();
+
+                // Spawn a falling power-up capsule every 5th broken brick
+                if (~powerUp.isActive()) {
+                    if ((remainingBricks = 27) | (remainingBricks = 22) | (remainingBricks = 17) | (remainingBricks = 12) | (remainingBricks = 7)) {
+                        // Spawn just below the bottom of the brick wall so it won't erase intact bricks
+                        let spawnX = wallLeft + (c * brickW) + 25;
+                        let spawnY = wallTop + (rows * brickH) + 2;
+                        do powerUp.spawn(spawnX, spawnY, nextPowerType);
+
+                        // Advance to the next shape type for the following drop (1 -> 2 -> 3 -> 1)
+                        let nextPowerType = nextPowerType + 1;
+                        if (nextPowerType > 3) {
+                            let nextPowerType = 1;
+                        }
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    /**
+     * Checks if the paddle caught the falling power-up capsule and applies its effect:
+     *   Type 1 (Square):   50/50 chance to shrink or expand paddle width
+     *   Type 2 (Triangle): Activates a second ball (Multi-Ball)
+     *   Type 3 (Plus):     Grants +1 extra life and restores default paddle size
+     */
+    method void checkPowerUpCollision() {
+        var int ux, uy, uSize, pType;
+
+        let ux = powerUp.getX();
+        let uy = powerUp.getY();
+        let uSize = powerUp.getSize();
+
+        if (intersects(ux, uy, uSize, uSize, paddle.getX(), paddle.getY(), paddle.getWidth(), paddle.getHeight())) {
+            let pType = powerUp.getType();
+            do powerUp.deactivate();        // Erase capsule once caught
+
+            // Type 1: Hollow Square -> Coin-flip between growing (+30px) and shrinking (half)
+            if (pType = 1) {
+                // Uses integer division truncation to check if ball1's X is even or odd
+                if (((ball1.getX() / 2) * 2) = ball1.getX()) {
+                    if (paddle.getWidth() < 90) {
+                        do paddle.setWidth(paddle.getWidth() + 30);
+                    }
+                } else {
+                    if (paddle.getWidth() > 30) {
+                        do paddle.setWidth(paddle.getWidth() / 2);
+                    }
+                }
+            }
+
+            // Type 2: Triangle -> Launch the second ball from the paddle
+            if (pType = 2) {
+                if (~ball2Active) {
+                    let ball2Active = true;
+                    do ball2.reset(paddle.getX() + 15, 220, -2, -2);
+                }
+            }
+
+            // Type 3: Plus -> Award +1 life and reset paddle width to normal (60px)
+            if (pType = 3) {
+                let lives = lives + 1;
+                do paddle.setWidth(60);
+                do drawHUD();
+            }
+        }
+        return;
+    }
+
+    /**
+     * Evaluates end-of-round and end-of-game conditions every frame:
+     *   - All bricks destroyed -> Display "YOU WIN!" and exit loop
+     *   - Individual ball drops past y = 252 -> Deactivate that ball
+     *   - All active balls lost -> Subtract a life (or trigger "GAME OVER")
+     */
+    method void checkBottomAndWin() {
+        // 1. Victory check
+        if (remainingBricks = 0) {
+            do Output.moveCursor(11, 27);
+            do Output.printString("YOU WIN!");
+            let exit = true;
+            return;
+        }
+
+        // 2. Check if ball1 fell off the bottom of the screen (screen height is 256)
+        if (ball1Active) {
+            if ((ball1.getY() + ball1.getSize()) > 252) {
+                do ball1.erase();
+                let ball1Active = false;
+            }
+        }
+
+        // 3. Check if ball2 fell off the bottom of the screen
+        if (ball2Active) {
+            if ((ball2.getY() + ball2.getSize()) > 252) {
+                do ball2.erase();
+                let ball2Active = false;
+            }
+        }
+
+        // 4. Only lose a life when no balls remain in play
+        if ((~ball1Active) & (~ball2Active)) {
+            do powerUp.deactivate();        // Clear any falling capsule between lives
+            let lives = lives - 1;
+            do drawHUD();
+
+            if (lives = 0) {
+                do Output.moveCursor(11, 26);
+                do Output.printString("GAME OVER");
+                let exit = true;
+            } else {
+                // Pause briefly so the player can get ready, then reset paddle and ball1
+                do Sys.wait(600);
+                do paddle.setWidth(60);
+                do paddle.reset(226);
+                let ball1Active = true;
+                do ball1.reset(253, 220, 2, -2);
+            }
+        }
+        return;
+    }
+
+    /**
+     * Returns true if rectangle A (ax, ay, aw, ah) overlaps rectangle B (bx, by, bw, bh).
+     */
+    method boolean intersects(int ax, int ay, int aw, int ah, int bx, int by, int bw, int bh) {
+        if ((ax + aw) < bx) { return false; }   // A is completely to the left of B
+        if (ax > (bx + bw)) { return false; }   // A is completely to the right of B
+        if ((ay + ah) < by) { return false; }   // A is completely above B
+        if (ay > (by + bh)) { return false; }   // A is completely below B
+        return true;                            // None of the miss cases hold -> overlap!
+    }
+
+}

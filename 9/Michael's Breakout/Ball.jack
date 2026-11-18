@@ -1,0 +1,109 @@
+/**
+ * Represents the ball in Breakout.
+ * Uses top-left (x, y) coordinates and a square bounding box (size x size)
+ * for fast rendering and exact collision detection on the Hack screen.
+ */
+class Ball {
+    field int x, y;       // Top-left position
+    field int size;       // Width and height in pixels
+    field int dx, dy;     // Velocity per frame
+
+    /** Constructs a new Ball at (startX, startY) with the given pixel size. */
+    constructor Ball new(int startX, int startY, int ballSize) {
+        let x = startX;
+        let y = startY;
+        let size = ballSize;
+        let dx = 2;
+        let dy = -2;
+        do draw();
+        return this;
+    }
+
+    /** Deallocates the Ball object from memory. */
+    method void dispose() {
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    /** Draws the ball on the screen. */
+    method void draw() {
+        do Screen.setColor(true);
+        do Screen.drawRectangle(x, y, x + size, y + size);
+        return;
+    }
+
+    /** Erases the ball from its current position. */
+    method void erase() {
+        do Screen.setColor(false);
+        do Screen.drawRectangle(x, y, x + size, y + size);
+        return;
+    }
+
+    /** 
+     * Moves the ball one step and bounces off the left, right, and top walls.
+     * Note: Bottom boundary (losing a life) is checked by Game.jack.
+     */
+    method void move() {
+        do erase();
+
+        let x = x + dx;
+        let y = y + dy;
+
+        // Left wall (screen min X is 0)
+        if (x < 1) {
+            let x = 1;
+            let dx = -dx;
+        }
+
+        // Right wall (screen max X is 511)
+        if ((x + size) > 510) {
+            let x = 510 - size;
+            let dx = -dx;
+        }
+
+        // Top wall (leaves top 16 pixels clear for score/lives text)
+        if (y < 16) {
+            let y = 16;
+            let dy = -dy;
+        }
+
+        do draw();
+        return;
+    }
+
+    /** Repositions the ball and resets velocity (useful after losing a life). */
+    method void reset(int startX, int startY, int startDx, int startDy) {
+        do erase();
+        let x = startX;
+        let y = startY;
+        let dx = startDx;
+        let dy = startDy;
+        do draw();
+        return;
+    }
+
+    /** Reverses horizontal direction. */
+    method void bounceX() {
+        let dx = -dx;
+        return;
+    }
+
+    /** Reverses vertical direction. */
+    method void bounceY() {
+        let dy = -dy;
+        return;
+    }
+
+    /** Sets a specific horizontal velocity (useful for angled paddle bounces). */
+    method void setDx(int newDx) {
+        let dx = newDx;
+        return;
+    }
+
+    /** Getters for collision detection in Game.jack */
+    method int getX() { return x; }
+    method int getY() { return y; }
+    method int getSize() { return size; }
+    method int getDx() { return dx; }
+    method int getDy() { return dy; }
+}
